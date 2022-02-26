@@ -5,6 +5,14 @@
 
 #include <cstdint>
 #include <string>
+#include <iostream>
+#include <vector>
+
+struct Segment {
+	std::string data;
+	size_t index;
+	bool eof;
+};
 
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
 //! possibly overlapping) into an in-order byte stream.
@@ -13,7 +21,11 @@ class StreamReassembler {
     // Your code here -- add private members as necessary.
 
     ByteStream _output;  //!< The reassembled in-order byte stream
+	std::vector<Segment> _buffer; //! 用来存储未加入字节流的段
     size_t _capacity;    //!< The maximum number of bytes
+
+	size_t _next_number; //! < 下一个需要确定的number
+	size_t _unassembled_bytes; //!< 处于缓冲区的字节数
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
@@ -31,6 +43,10 @@ class StreamReassembler {
     //! \param eof the last byte of `data` will be the last byte in the entire stream
     void push_substring(const std::string &data, const uint64_t index, const bool eof);
 
+	bool write_segment(const std::string &data, const size_t index, const bool eof);
+	void find_segment();
+	void push_segment(Segment &segment);
+
     //! \name Access the reassembled byte stream
     //!@{
     const ByteStream &stream_out() const { return _output; }
@@ -46,6 +62,8 @@ class StreamReassembler {
     //! \brief Is the internal state empty (other than the output stream)?
     //! \returns `true` if no substrings are waiting to be assembled
     bool empty() const;
+
+	size_t capacity_left() const;
 };
 
 #endif  // SPONGE_LIBSPONGE_STREAM_REASSEMBLER_HH

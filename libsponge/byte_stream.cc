@@ -19,10 +19,6 @@ ByteStream::ByteStream(const size_t capacity)
     : _error(false), _eof_flag(false), _byte_deque(), _capacity(capacity), _bytes_written(0), _bytes_read(0) {}
 
 size_t ByteStream::write(const string &data) {
-    if (_eof_flag) {
-        return 0;
-    }
-
     size_t accepted_len = min(this->remaining_capacity(), data.size());
     for (size_t i = 0; i < accepted_len; i++) {
         _byte_deque.push_back(data[i]);
