@@ -13,7 +13,7 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
-bool sort_function(Segment seg1, Segment seg2) { return seg1.index < seg2.index; }
+bool sort_function(Substrings seg1, Substrings seg2) { return seg1.index < seg2.index; }
 
 StreamReassembler::StreamReassembler(const size_t capacity)
 	: _output(capacity), _buffer(), _capacity(capacity), _next_number(0), _unassembled_bytes(0) {}
@@ -25,14 +25,14 @@ StreamReassembler::StreamReassembler(const size_t capacity)
 ** 如果没有包含_next_number, 则将其放入_buffer中, 然后调整_buffer的最长前缀(push_segment)
  */
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
-	if (not write_segment(data, index, eof)) {
-		Segment segment = { data, index, eof };
-		push_segment(segment);
+	if (not write_substrings(data, index, eof)) {
+		Substrings segment = { data, index, eof };
+		push_substrings(segment);
 	}
 }
 
 /* 判断数据是否可以写入, 如果不可以返回false, 如果可以写入则写入并更新eof以及_next_number */
-bool StreamReassembler::write_segment(const string &data, const size_t index, const bool eof) {
+bool StreamReassembler::write_substrings(const string &data, const size_t index, const bool eof) {
 	if (data.empty() && eof) {
 		_output.end_input();
 		return true;
@@ -49,21 +49,21 @@ bool StreamReassembler::write_segment(const string &data, const size_t index, co
 		if (eof && real_wrtsz == wrtsz) _output.end_input();
 
 		if (real_wrtsz != wrtsz) {
-			Segment segment = { data.substr(_next_number - index + real_wrtsz, data.size() - 1 - _next_number - real_wrtsz + 1), _next_number + real_wrtsz, eof };
-			push_segment(segment);
+			Substrings segment = { data.substr(_next_number - index + real_wrtsz, data.size() - 1 - _next_number - real_wrtsz + 1), _next_number + real_wrtsz, eof };
+			push_substrings(segment);
 		}
 
 		_next_number += real_wrtsz;
 
-		find_segment();
+		find_substrings();
 		return true;
 	}
 	return false;
 }
 
-void StreamReassembler::find_segment() {
+void StreamReassembler::find_substrings() {
 	size_t wrtsz, real_wrtsz;
-	std::vector<Segment> new_buffer;
+	std::vector<Substrings> new_buffer;
 
 	_unassembled_bytes = 0;
 
@@ -81,7 +81,7 @@ void StreamReassembler::find_segment() {
 	_buffer = new_buffer;
 }
 
-void StreamReassembler::push_segment(Segment &segment) {
+void StreamReassembler::push_substrings(Substrings &segment) {
 	if (segment.index + segment.data.size() - 1 < _next_number) return;
 	if (segment.index <= _next_number) {
 		segment.data = segment.data.substr(_next_number - segment.index, segment.index + segment.data.size() - 1 - _next_number + 1);
@@ -96,7 +96,7 @@ void StreamReassembler::push_segment(Segment &segment) {
 		return;
 	}
 
-	std::vector<Segment> new_buffer;
+	std::vector<Substrings> new_buffer;
 	bool middle_flag = false;
 
 	for (size_t i = 0; i < _buffer.size(); i++) {
@@ -143,6 +143,6 @@ void StreamReassembler::push_segment(Segment &segment) {
 
 size_t StreamReassembler::unassembled_bytes() const { return _unassembled_bytes; }
 
-size_t StreamReassembler::capacity_left() const { return _capacity - _output.buffer_size() - unassembled_bytes(); }
+size_t StreamReassembler::capacity_left() const { return _capacity - _output.buffer_size(); }
 
 bool StreamReassembler::empty() const { return unassembled_bytes() > 0 ? false : true; }

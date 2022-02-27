@@ -14,8 +14,8 @@ using namespace std;
 //! \param n The input absolute 64-bit sequence number
 //! \param isn The initial sequence number
 WrappingInt32 wrap(uint64_t n, WrappingInt32 isn) {
-    DUMMY_CODE(n, isn);
-    return WrappingInt32{0};
+    uint32_t round_no = n % (1ull << 32);
+    return WrappingInt32{isn.raw_value() + round_no};
 }
 
 //! Transform a WrappingInt32 into an "absolute" 64-bit sequence number (zero-indexed)
@@ -29,6 +29,35 @@ WrappingInt32 wrap(uint64_t n, WrappingInt32 isn) {
 //! and the other stream runs from the remote TCPSender to the local TCPReceiver and
 //! has a different ISN.
 uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
-    DUMMY_CODE(n, isn, checkpoint);
-    return {};
+    uint64_t abs_seqno = 0;
+    uint64_t max_uint32 = 1ull << 32;
+    uint64_t n_value = n.raw_value();
+    uint64_t isn_value = isn.raw_value();
+
+    // 对齐到n需要几步
+    if (n_value > isn_value) {
+        abs_seqno += n_value - isn_value;
+    } else if (n_value < isn_value) {
+        abs_seqno += max_uint32 - (isn_value - n_value);
+    }
+
+    if (checkpoint < abs_seqno)
+        return abs_seqno;
+
+    // 每次增加完一个轮回, 判断与checkpoint的距离
+    while (true) {
+        if (checkpoint == abs_seqno)
+            return abs_seqno;
+        else if (checkpoint > abs_seqno) {
+            uint64_t times = (checkpoint - abs_seqno) / max_uint32;
+            if (times == 0)
+                times = 1;
+            abs_seqno += times * max_uint32;
+        } else if (checkpoint < abs_seqno) {
+            if (abs_seqno - checkpoint > checkpoint - (abs_seqno - max_uint32))
+                return abs_seqno - max_uint32;
+            else
+                return abs_seqno;
+        }
+    }
 }

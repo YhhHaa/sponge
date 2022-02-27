@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 
-struct Segment {
+struct Substrings {
 	std::string data;
 	size_t index;
 	bool eof;
@@ -21,7 +21,7 @@ class StreamReassembler {
     // Your code here -- add private members as necessary.
 
     ByteStream _output;  //!< The reassembled in-order byte stream
-	std::vector<Segment> _buffer; //! 用来存储未加入字节流的段
+	std::vector<Substrings> _buffer; //! 用来存储未加入字节流的段
     size_t _capacity;    //!< The maximum number of bytes
 
 	size_t _next_number; //! < 下一个需要确定的number
@@ -43,9 +43,11 @@ class StreamReassembler {
     //! \param eof the last byte of `data` will be the last byte in the entire stream
     void push_substring(const std::string &data, const uint64_t index, const bool eof);
 
-	bool write_segment(const std::string &data, const size_t index, const bool eof);
-	void find_segment();
-	void push_segment(Segment &segment);
+	bool write_substrings(const std::string &data, const size_t index, const bool eof);
+	void find_substrings();
+	void push_substrings(Substrings &segment);
+
+	size_t stream_next_index() const {return _next_number;}
 
     //! \name Access the reassembled byte stream
     //!@{
