@@ -147,43 +147,49 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     uint64_t abs_seq = unwrap(ackno, _isn, _next_seqno);
 
     // 如果接受的abs_seq小于等于下一个将发送的，那么代表有一部分接受到了，但是还有一部分需要重发。同时排除错误情况。
-    if (_segments_flying.empty())
-        return;
+	bool empty_flag;
+	TCPSegment lst_seg;
+    if (!_segments_flying.empty()) {
+		empty_flag = false;
+	    lst_seg = _segments_flying.front();
+	} else {
+		empty_flag = true;
+	}
 
-    TCPSegment lst_seg = _segments_flying.front();
-    if (abs_seq <= _next_seqno && abs_seq >= unwrap(lst_seg.header().seqno, _isn, _next_seqno)) {
-        // 删除维护的正在飞行的seg
-        while (!_segments_flying.empty()) {
-            lst_seg = _segments_flying.front();
-            if (unwrap(lst_seg.header().seqno, _isn, _next_seqno) + lst_seg.length_in_sequence_space() <= abs_seq) {
-                _flying_seqnos -= lst_seg.length_in_sequence_space();
-                _segments_flying.pop();
+	if ((!empty_flag && abs_seq <= _next_seqno && abs_seq >= unwrap(lst_seg.header().seqno, _isn, _next_seqno)) || 
+		(empty_flag && abs_seq <= _next_seqno)) {
+		// 删除维护的正在飞行的seg
+		while (!_segments_flying.empty()) {
+			lst_seg = _segments_flying.front();
+			if (unwrap(lst_seg.header().seqno, _isn, _next_seqno) + lst_seg.length_in_sequence_space() <= abs_seq) {
+				_flying_seqnos -= lst_seg.length_in_sequence_space();
+				_segments_flying.pop();
 
-                // 重发统计
-                _rto_time = _initial_retransmission_timeout;
-                _timer.time_start(_rto_time);
-                _cnt_rtrans = 0;
-            } else {
-                break;
-            }
-        }
+				// 重发统计
+				_rto_time = _initial_retransmission_timeout;
+				_timer.time_start(_rto_time);
+				_cnt_rtrans = 0;
+			} else {
+				break;
+			}
+		}
 
-        // 自己重新调用fill_window，对包进行重发
-        if (window_size < _flying_seqnos) {  // 如果window_size比外界还在发送的seqnos小，说明此时不要传输包了
-            _window_size = 0;
-            _recv_zero_flag = true;
-            return;
-        } else {  // 否则说明接收方能容纳更多的包，将发送窗口更新为接受窗口
-            if (window_size == 0) {
-                _window_size = 1;
-                _recv_zero_flag = true;
-            } else {
-                _window_size = window_size;
-                _recv_zero_flag = false;
-            }
-        }
-        fill_window();
-    }
+		// 自己重新调用fill_window，对包进行重发
+		if (window_size < _flying_seqnos) {  // 如果window_size比外界还在发送的seqnos小，说明此时不要传输包了
+			_window_size = 0;
+			_recv_zero_flag = true;
+			return;
+		} else {  // 否则说明接收方能容纳更多的包，将发送窗口更新为接受窗口
+			if (window_size == 0) {
+				_window_size = 1;
+				_recv_zero_flag = true;
+			} else {
+				_window_size = window_size;
+				_recv_zero_flag = false;
+			}
+		}
+		fill_window();
+	}
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method

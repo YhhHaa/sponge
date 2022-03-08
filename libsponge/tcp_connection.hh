@@ -19,7 +19,18 @@ class TCPConnection {
     //! Should the TCPConnection stay active (and keep ACKing)
     //! for 10 * _cfg.rt_timeout milliseconds after both streams have ended,
     //! in case the remote TCPConnection doesn't know we've received its whole stream?
-    bool _linger_after_streams_finish{true};
+    bool _linger_after_streams_finish{true}; // 输入流在输出流到达eof前结束则设置为false
+
+	size_t _intervals{0}; // 自从上个包被接受之后的间隔时间
+
+	bool _active{true}; // TCP连接是否处于活动状态
+
+	void _unclean_shutdown(bool); // 设置rst状态
+	void _send_segments(bool ack_flag); // 发送数据报
+
+	// 正常结束原则1-3
+	bool _inbound_done() { return _receiver.stream_out().input_ended(); }
+	bool _outbound_done() { return TCPState::state_summary(_sender) == TCPSenderStateSummary::FIN_ACKED;}
 
   public:
     //! \name "Input" interface for the writer

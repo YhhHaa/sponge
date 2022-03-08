@@ -1,5 +1,6 @@
 #include "wrapping_integers.hh"
 
+#include <iostream>
 // Dummy implementation of a 32-bit wrapping integer
 
 // For Lab 2, please replace with a real implementation that passes the
@@ -31,8 +32,8 @@ WrappingInt32 wrap(uint64_t n, WrappingInt32 isn) {
 uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
     uint64_t abs_seqno = 0;
     uint64_t max_uint32 = 1ull << 32;
-    uint64_t n_value = n.raw_value();
-    uint64_t isn_value = isn.raw_value();
+    uint64_t n_value = static_cast<uint64_t>(n.raw_value());
+    uint64_t isn_value = static_cast<uint64_t>(isn.raw_value());
 
     // 对齐到n需要几步
     if (n_value > isn_value) {
@@ -40,9 +41,9 @@ uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
     } else if (n_value < isn_value) {
         abs_seqno += max_uint32 - (isn_value - n_value);
     }
-
-    if (checkpoint < abs_seqno)
+    if (checkpoint < abs_seqno) {
         return abs_seqno;
+	}
 
     // 每次增加完一个轮回, 判断与checkpoint的距离
     while (true) {

@@ -32,21 +32,24 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
         _SYN_flag = true;
     }
 
-    // 初始化fin
-    if (seg.header().fin)
-        _FIN_flag = true;
-
     /* 通过32位相对seqno复原64位绝对stream_index
     1. seqno: 将其转换成相应的stream_index
     2. ISN: 转换过程中, 需要的uin32_t一开始的初值
     3. _checkpoint: 转换出的结果应该最接近的uint64_t, 值实际上是_bytes_written
     需要考虑的特殊情况:
     1. 确保seqno是第一个字节的seqno, 有可能会有SYN占用了一个seqno
+	// 如果seqno等于ISN，即"abc"的第一个字符的seqno为ISN。
+	// 有两种情况，一种是过了n轮的绝对stream_index，这种情况下checkpoint必然很大，在while循环中找到
+	// 还有一种是过了至少1轮的绝对stream_index，这种情况下checkpoint却是没有过了至少1轮，这是错误的
     */
     // 获得第一个字节的seqno
     WrappingInt32 seqno(seg.header().seqno.raw_value());
-    if (seg.header().syn)
+    if (seg.header().syn) {
         seqno = WrappingInt32(1 + seg.header().seqno.raw_value());
+	}
+	if (seqno == _ISN && _reassembler.stream_out().bytes_written() < (1ull << 32)) { // 排除非法情况
+		return;
+	}
     // 获得真实的stream_index
     uint64_t stream_index = unwrap(seqno, _ISN, _reassembler.stream_out().bytes_written()) - 1;
 
@@ -59,11 +62,10 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
 > 若ISN未设置返回empty */
 optional<WrappingInt32> TCPReceiver::ackno() const {
     if (_SYN_flag) {
-        size_t next_index = _reassembler.stream_next_index() + 1;  // 获得从0开始绝对的seqno
-        if (_reassembler.stream_out().eof_status())
-            return wrap(static_cast<uint64_t>(next_index), _ISN) + 1;  // 因为FIN也占一个
+        if (_reassembler.stream_out().input_ended())
+            return WrappingInt32(wrap(_reassembler.stream_out().bytes_written() + 1, _ISN)) + 1;  // 因为FIN也占一个
         else
-            return wrap(static_cast<uint64_t>(next_index), _ISN);
+            return WrappingInt32(wrap(_reassembler.stream_out().bytes_written() + 1, _ISN));
     } else
         return {};
 }

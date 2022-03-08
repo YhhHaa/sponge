@@ -26,6 +26,7 @@ StreamReassembler::StreamReassembler(const size_t capacity)
 ** 如果没有包含_next_number, 则将其放入_buffer中, 然后调整_buffer的最长前缀(push_segment)
 */
 void StreamReassembler::push_substring(const string &data, const size_t index, const bool eof) {
+	if (index >= _next_number + capacity_left()) return;
     if (not write_substrings(data, index, eof)) {
         Substrings segment = {data, index, eof};
         push_substrings(segment);
@@ -34,12 +35,14 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
 
 /* 判断数据是否可以写入, 如果不可以返回false, 如果可以写入则写入并更新eof以及_next_number */
 bool StreamReassembler::write_substrings(const string &data, const size_t index, const bool eof) {
-    if (data.empty() && eof) {
-        _output.end_input();
-        return true;
-    } else if (data.empty()) {
+    if (data.empty() && !eof) {
         return true;
     }
+
+	if (eof && data.size() == 0 && index == _next_number) {
+		_output.end_input();
+		return true;
+	}
 
     size_t wrtsz, real_wrtsz;
 
@@ -68,23 +71,22 @@ bool StreamReassembler::write_substrings(const string &data, const size_t index,
 
 void StreamReassembler::find_substrings() {
     size_t wrtsz, real_wrtsz;
-    std::vector<Substrings> new_buffer;
 
-    _unassembled_bytes = 0;
+	vector<Substrings>::iterator it = _buffer.begin();
 
-    for (size_t i = 0; i < _buffer.size(); i++) {
-        if (_buffer[i].index <= _next_number && _next_number <= _buffer[i].index + _buffer[i].data.size() - 1) {
-            wrtsz = (_buffer[i].index + _buffer[i].data.size() - 1) - _next_number + 1;
-            real_wrtsz = _output.write(_buffer[i].data.substr(_next_number - _buffer[i].index, wrtsz));
-            if (_buffer[i].eof && real_wrtsz == wrtsz)
-                _output.end_input();
+	while (it != _buffer.end()) {
+		if (it->index <= _next_number && _next_number <= it->index + it->data.size() - 1) { // 合适的段写入_output
+            wrtsz = (it->index + it->data.size() - 1) - _next_number + 1;
+            real_wrtsz = _output.write(it->data.substr(_next_number - it->index, wrtsz));
+            if (it->eof && real_wrtsz == wrtsz) _output.end_input();
             _next_number += real_wrtsz;
-        } else if (_next_number < _buffer[i].index) {
-            new_buffer.push_back(_buffer[i]);
-            _unassembled_bytes += _buffer[i].data.size();
-        }
-    }
-    _buffer = new_buffer;
+			it = _buffer.erase(it);
+        } else if (it->index + it->data.size() - 1 < _next_number) { // 不合适的段删除
+			it = _buffer.erase(it);
+		} else {
+			it++;
+		}
+	}
 }
 
 void StreamReassembler::push_substrings(Substrings &segment) {
@@ -96,67 +98,76 @@ void StreamReassembler::push_substrings(Substrings &segment) {
         segment.index = _next_number;
     }
 
-    _unassembled_bytes = 0;
-
     if (_buffer.empty()) {
         _buffer.push_back(segment);
-        _unassembled_bytes += segment.data.size();
         return;
     }
 
-    std::vector<Substrings> new_buffer;
-    bool middle_flag = false;
+	vector<Substrings>::iterator it = _buffer.begin();
+	while (true) {
+		// 如果遍历到了最后，则将其插入后退出
+		if (it == _buffer.end()) {
+			_buffer.push_back(segment);
+			return;
+		}
 
-    for (size_t i = 0; i < _buffer.size(); i++) {
-        // 如果是segment是_buffer[i]的一个元素的中间元素, 把_buffer[i]放入new_buffer, 同时标记不要把segment放进去
-        if (segment.index >= _buffer[i].index &&
-            segment.index + segment.data.size() <= _buffer[i].index + _buffer[i].data.size()) {
-            new_buffer.push_back(_buffer[i]);
-            _unassembled_bytes += _buffer[i].data.size();
-            middle_flag = true;
-            continue;
+		// 如果是segment是_buffer[i]的一个元素的中间元素直接退出
+        if (segment.index >= it->index &&
+            segment.index + segment.data.size() <= it->index + it->data.size()) {
+            return;
         }
-        // 如果是_buffer[i]是segment的内部元素, 不管
-        if (_buffer[i].index >= segment.index &&
-            _buffer[i].index + _buffer[i].data.size() <= segment.index + segment.data.size())
+
+        // 如果是_buffer[i]是segment的内部元素, 将其删除
+        if (it->index >= segment.index &&
+            it->index + it->data.size() <= segment.index + segment.data.size()) {
+			
+			it = _buffer.erase(it);
             continue;
-        // 如果没有交集, 则放入new_buffer
-        if (segment.index > _buffer[i].index + _buffer[i].data.size() - 1 ||
-            segment.index + segment.data.size() - 1 < _buffer[i].index) {
-            new_buffer.push_back(_buffer[i]);
-            _unassembled_bytes += _buffer[i].data.size();
-            continue;
+		}
+			
+        // 如果之前没有交集, 将其插入并退出
+        if (segment.index + segment.data.size() - 1 < it->index) {
+			_buffer.insert(it, segment);
+			return;
         }
-        // 如果是_buffer[i]的左边和segment相交, 合并segment, 继续遍历寻找没有交集的
-        if (segment.index + segment.data.size() - 1 >= _buffer[i].index &&
-            segment.index + segment.data.size() - 1 <= _buffer[i].index + _buffer[i].data.size() - 1) {
-            _buffer[i].data =
-                segment.data + _buffer[i].data.substr(segment.index + segment.data.size() - 1 - _buffer[i].index + 1,
-                                                      segment.data.size() - (_buffer[i].index + _buffer[i].data.size() -
-                                                                             1 - segment.index + 1));
-            _buffer[i].index = segment.index;
-            segment = _buffer[i];
-            continue;
+
+		// 如果是之后没有交集，则继续遍历
+		if (segment.index > it->index + it->data.size() - 1) {
+			it++;
+			continue;
+		}
+
+        // 如果是_buffer[i]的左边和segment相交, 合并segment, 然后退出
+        if (segment.index + segment.data.size() - 1 >= it->index &&
+            segment.index + segment.data.size() - 1 <= it->index + it->data.size() - 1) {
+            it->data =
+                segment.data + it->data.substr(
+					segment.index + segment.data.size() - 1 - it->index + 1,
+					segment.data.size() - (it->index + it->data.size() - 1 - segment.index + 1));
+			it->index = segment.index;
+            return;
         }
+
         // 如果是_buffer[i]的右边和segment相交, 合并segment, 继续遍历
-        if (segment.index >= _buffer[i].index) {
-            _buffer[i].data =
-                _buffer[i].data + segment.data.substr(_buffer[i].index + _buffer[i].data.size() - 1 - segment.index + 1,
-                                                      segment.data.size() - (_buffer[i].index + _buffer[i].data.size() -
-                                                                             1 - segment.index + 1));
-            segment = _buffer[i];
+        if (segment.index >= it->index) {
+            segment.data = it->data + 
+						   segment.data.substr(
+							   it->index + it->data.size() - 1 - segment.index + 1,
+								segment.data.size() - (it->index + it->data.size() - 1 - segment.index + 1));
+			segment.index = it->index;
+			it = _buffer.erase(it);
             continue;
         }
-    }
-    if (not middle_flag) {
-        new_buffer.push_back(segment);
-        _unassembled_bytes += segment.data.size();
-    }
-    _buffer = new_buffer;
-    sort(_buffer.begin(), _buffer.end(), sort_function);
+	}
 }
 
-size_t StreamReassembler::unassembled_bytes() const { return _unassembled_bytes; }
+size_t StreamReassembler::unassembled_bytes() const { 
+	size_t bytes = 0;
+	for (size_t i = 0; i < _buffer.size(); i++) {
+		bytes += _buffer[i].data.size();
+	}
+	return bytes;
+}
 
 size_t StreamReassembler::capacity_left() const { return _capacity - _output.buffer_size(); }
 
